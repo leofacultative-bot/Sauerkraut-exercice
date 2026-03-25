@@ -1125,8 +1125,18 @@ function _fsPatch(subj, data) {
     body: JSON.stringify({ fields: fields })
   }).then(function(r) {
     if (r.status === 401) { _accessToken = null; _accessTokenExp = 0; }
-    if (!r.ok) return r.text().then(function(t) { console.warn('PATCH failed:', t.slice(0, 80)); });
-  }).catch(function(err) { console.warn('PATCH error:', err); });
+    if (!r.ok) {
+      return r.text().then(function(t) {
+        var msg = 'PATCH failed (' + subj + ') status ' + r.status + ': ' + String(t).slice(0, 160);
+        console.warn(msg);
+        throw new Error(msg);
+      });
+    }
+    return r;
+  }).catch(function(err) {
+    console.warn('PATCH error (' + subj + '):', err);
+    throw err;
+  });
 }
 
 function _fsGet(subj) {
@@ -1136,12 +1146,21 @@ function _fsGet(subj) {
   }).then(function(r) {
     if (r.status === 401) { _accessToken = null; _accessTokenExp = 0; return null; }
     if (r.status === 404) return null;
-    if (!r.ok) return null;
+    if (!r.ok) {
+      return r.text().then(function(t) {
+        var msg = 'GET failed (' + subj + ') status ' + r.status + ': ' + String(t).slice(0, 160);
+        console.warn(msg);
+        throw new Error(msg);
+      });
+    }
     return r.json().then(function(doc) {
       if (!doc.fields || !doc.fields.exercises) return null;
       return _fromFsValue(doc.fields.exercises);
     });
-  }).catch(function() { return null; });
+  }).catch(function(err) {
+    // Bubble up for pollOnce so we can show an actual error.
+    throw err;
+  });
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -1323,7 +1342,12 @@ function saveSubject(subj) {
     _ignoreRemote[subj] = false;
   }, 1500);
 
-  _fsPatch(subj, data);
+  _fsPatch(subj, data).catch(function(err) {
+    // Make write failures visible; without this sync can silently stop.
+    setSyncStatus('error', 'Ecriture Firestore échouée');
+    try { showToast('✗ Sync write error', 'error'); } catch(e) {}
+    console.warn('Write failed (' + subj + '):', err);
+  });
 }
 
 // ════════════════════════════════════════════════════════════════════
