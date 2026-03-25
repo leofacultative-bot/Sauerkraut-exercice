@@ -1,4 +1,4 @@
-const CACHE = 'study-timer-v2';
+const CACHE = 'study-timer-v3';
 
 const PRECACHE = [
   './index.html',

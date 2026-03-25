@@ -876,7 +876,7 @@ header h1 span.h-pc   { color: var(--pc); }
     <div id="google-signin-btn"></div>
     <hr class="login-divider">
     <p class="login-disclaimer">
-      Tes données restent sur cet appareil.<br>
+      Tes données sont synchronisées entre appareils.<br>
       Google est utilisé uniquement pour t'identifier.
     </p>
   </div>
@@ -1013,17 +1013,124 @@ header h1 span.h-pc   { color: var(--pc); }
   </button>
 </nav>
 
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script>
+// ── FIREBASE CONFIG ────────────────────────────────────────
+// Wrapped in a self-executing function that retries until firebase is defined,
+// in case the service worker serves a stale page while scripts load fresh.
+(function waitForFirebase(attempts) {
+  if (typeof firebase !== 'undefined') {
+    var firebaseConfig = {
+      apiKey:            "AIzaSyAeaq4-J_N9EjDNkMB5PbmeB_LQieKLa-4",
+      authDomain:        "sauerkraut-exercice-4c3b4.firebaseapp.com",
+      projectId:         "sauerkraut-exercice-4c3b4",
+      storageBucket:     "sauerkraut-exercice-4c3b4.firebasestorage.app",
+      messagingSenderId: "673880973979",
+      appId:             "1:673880973979:web:0a5faed2b8b60d15309c3e"
+    };
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    window._db = firebase.firestore();
+    window._firebaseReady = true;
+    document.dispatchEvent(new Event('firebase-ready'));
+    return;
+  }
+  if (attempts <= 0) { console.error('Firebase failed to load'); return; }
+  setTimeout(function() { waitForFirebase(attempts - 1); }, 100);
+})(30);
+</script>
+
 <script>
 // ── GOOGLE AUTH ────────────────────────────────────────────
-// IMPORTANT: Replace this with your own Google OAuth Client ID.
-// Get one free at: https://console.cloud.google.com/
-// → APIs & Services → Credentials → Create OAuth 2.0 Client ID (Web application)
-// → Add your domain (or http://localhost for local testing) to Authorized JS origins
 var GOOGLE_CLIENT_ID = '669409125162-99r1u9jbes0na5g7pucdjeuvrl4j9abl.apps.googleusercontent.com';
 
-var _currentUser = null;    // { sub, name, email, picture }
-var _userPrefix  = 'anon';  // localStorage key prefix, set after login
+var _currentUser = null;   // { sub, name, email, picture }
+var _userPrefix  = 'anon'; // localStorage fallback prefix
 
+// ── FIRESTORE SYNC ─────────────────────────────────────────
+// Structure: users/{uid}/subjects/{subj}  →  { exercises: [...] }
+
+function _fsDoc(subj) {
+  return window._db.collection('users').doc(_currentUser.sub)
+            .collection('subjects').doc(subj);
+}
+
+// Save one subject to Firestore (and localStorage as offline cache)
+function saveToFirestore(subj) {
+  if (!_currentUser) return;
+  var data = exercises[subj].map(function(e) {
+    return {
+      id:        e.id,
+      label:     e.label,
+      elapsed:   e.elapsed,
+      startedAt: e.running ? e.startedAt : null,
+      stops:     e.stops,
+      photos:    e.photos || {}
+    };
+  });
+  // Always write localStorage as instant offline cache
+  try { localStorage.setItem(_userPrefix + 'st4_' + subj, JSON.stringify(data)); } catch(err) {}
+  // Write to Firestore (best-effort, fire and forget)
+  _fsDoc(subj).set({ exercises: data, updatedAt: Date.now() }).catch(function(err) {
+    console.warn('Firestore write failed:', err);
+  });
+}
+
+// Load all subjects from Firestore; fall back to localStorage if offline
+function loadFromFirestore() {
+  var subjects = ['math', 'svt', 'pc'];
+  var promises = subjects.map(function(subj) {
+    return _fsDoc(subj).get().then(function(doc) {
+      var data = doc.exists ? doc.data().exercises : null;
+      // If nothing in Firestore, try migrating from localStorage
+      if (!data) {
+        try {
+          var raw = localStorage.getItem(_userPrefix + 'st4_' + subj);
+          if (raw) data = JSON.parse(raw);
+        } catch(e) {}
+      }
+      if (!data) return;
+      var now = Date.now();
+      data.forEach(function(d) {
+        var resumedElapsed = d.startedAt
+          ? Math.max(0, now - d.startedAt)
+          : (d.elapsed || 0);
+        var ex = makeEx(d.id, d.label, resumedElapsed, d.stops, d.photos || {});
+        if (d.startedAt) {
+          ex.startedAt = now - resumedElapsed;
+          scheduleResume(subj, ex);
+        }
+        exercises[subj].push(ex);
+        if (d.id >= nextId) nextId = d.id + 1;
+      });
+      renderList(subj);
+    }).catch(function() {
+      // Offline — fall back to localStorage silently
+      try {
+        var raw = localStorage.getItem(_userPrefix + 'st4_' + subj);
+        if (!raw) return;
+        var data2 = JSON.parse(raw);
+        var now2 = Date.now();
+        data2.forEach(function(d) {
+          var resumedElapsed = d.startedAt ? Math.max(0, now2 - d.startedAt) : (d.elapsed || 0);
+          var ex = makeEx(d.id, d.label, resumedElapsed, d.stops, d.photos || {});
+          if (d.startedAt) { ex.startedAt = now2 - resumedElapsed; scheduleResume(subj, ex); }
+          exercises[subj].push(ex);
+          if (d.id >= nextId) nextId = d.id + 1;
+        });
+        renderList(subj);
+      } catch(e) {}
+    });
+  });
+  Promise.all(promises).then(function() {
+    updateAllChips();
+    startAutoSave();
+    startRafLoop();
+    showToast('✓ Données synchronisées', 'success');
+  });
+}
+
+// ── GOOGLE SIGN-IN ─────────────────────────────────────────
 function parseJwt(token) {
   try {
     var b64 = token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/');
@@ -1041,44 +1148,34 @@ function onGoogleCredential(response) {
 }
 
 function showApp() {
-  // Hide login screen
   document.getElementById('login-screen').classList.add('hidden');
-  // Show user pill
   var wrap = document.getElementById('user-pill-wrap');
   wrap.style.display = 'flex';
-  var img  = document.getElementById('user-avatar');
-  var nm   = document.getElementById('user-name');
-  img.src  = _currentUser.picture || '';
-  nm.textContent = _currentUser.name || _currentUser.email;
-  // Bind event listeners that need real DOM elements
+  document.getElementById('user-avatar').src = _currentUser.picture || '';
+  document.getElementById('user-name').textContent = _currentUser.name || _currentUser.email;
   _bindPhotoInput();
   _bindLightbox();
-  // Now load data with the correct prefix
-  loadAll();
+  // Load from Firestore (with localStorage fallback)
+  loadFromFirestore();
 }
 
 function openSignoutModal()  { document.getElementById('signout-modal').classList.add('open'); }
 function closeSignoutModal() { document.getElementById('signout-modal').classList.remove('open'); }
 
 function doSignOut() {
-  // Revoke Google session (client-side only)
   if (window.google && google.accounts && google.accounts.id) {
     google.accounts.id.disableAutoSelect();
-    if (_currentUser && _currentUser.sub) {
-      google.accounts.id.revoke(_currentUser.email || '', function(){});
-    }
+    google.accounts.id.revoke(_currentUser.email || '', function(){});
   }
   localStorage.removeItem('st_session');
   _currentUser = null;
   _userPrefix  = 'anon';
   closeSignoutModal();
-  // Reload to start fresh
   window.location.reload();
 }
 
 // ── INIT AUTH ─────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', function() {
-  // Check for existing session
   try {
     var saved = localStorage.getItem('st_session');
     if (saved) {
@@ -1089,13 +1186,11 @@ window.addEventListener('DOMContentLoaded', function() {
     }
   } catch(e) {}
 
-  // Init Google Identity Services
   if (window.google && google.accounts) {
     initGSI();
   } else {
-    // Wait for GSI script to load
-    var script = document.querySelector('script[src*="accounts.google.com/gsi"]');
-    if (script) script.addEventListener('load', initGSI);
+    document.querySelector('script[src*="accounts.google.com/gsi"]')
+      .addEventListener('load', initGSI);
   }
 });
 
@@ -1108,13 +1203,7 @@ function initGSI() {
   });
   google.accounts.id.renderButton(
     document.getElementById('google-signin-btn'),
-    {
-      theme: 'filled_black',
-      size: 'large',
-      shape: 'pill',
-      width: 280,
-      text: 'continue_with'
-    }
+    { theme: 'filled_black', size: 'large', shape: 'pill', width: 280, text: 'continue_with' }
   );
   google.accounts.id.prompt();
 }
@@ -1133,17 +1222,7 @@ let nextId = 1;
 // This survives refreshes, tab switches, phone sleep, and crashes.
 
 function saveSubject(subj) {
-  var data = exercises[subj].map(function(e) {
-    return {
-      id:        e.id,
-      label:     e.label,
-      elapsed:   e.elapsed,
-      startedAt: e.running ? e.startedAt : null,
-      stops:     e.stops,
-      photos:    e.photos || {}
-    };
-  });
-  try { localStorage.setItem(_userPrefix + 'st4_' + subj, JSON.stringify(data)); } catch(err) {}
+  saveToFirestore(subj);
 }
 
 // ── RAF DISPLAY LOOP ───────────────────────────────────────
@@ -1205,43 +1284,8 @@ window.addEventListener('beforeunload', function() {
   });
 });
 
-function loadAll() {
-  ['math','svt','pc'].forEach(function(subj) {
-    try {
-      var raw = localStorage.getItem(_userPrefix + 'st4_' + subj);
-      if (!raw) raw = localStorage.getItem(_userPrefix + 'st3_' + subj); // fallback old key
-      if (!raw) return;
-      var data = JSON.parse(raw);
-      var now  = Date.now();
-      data.forEach(function(d) {
-        // When startedAt is present, ex.elapsed was continuously overwritten by
-        // the running interval as (Date.now() - startedAt), so d.elapsed already
-        // equals (saveTime - startedAt).  Adding (now - startedAt) on top would
-        // double-count all time before the save, producing a wildly wrong value.
-        // The correct total is simply (now - startedAt) — the original anchor
-        // captures every millisecond since the timer was started.
-        var resumedElapsed = d.startedAt
-          ? Math.max(0, now - d.startedAt)
-          : (d.elapsed || 0);
 
-        var ex = makeEx(d.id, d.label, resumedElapsed, d.stops, d.photos || {});
 
-        // Resume the timer automatically if it was running
-        if (d.startedAt) {
-          ex.startedAt = now - resumedElapsed; // recalibrate so interval stays accurate
-          scheduleResume(subj, ex);
-        }
-
-        exercises[subj].push(ex);
-        if (d.id >= nextId) nextId = d.id + 1;
-      });
-      renderList(subj);
-    } catch(err) {}
-  });
-  updateAllChips();
-  startAutoSave();
-  startRafLoop();
-}
 
 // Resume a timer after the DOM is ready
 function scheduleResume(subj, ex) {
