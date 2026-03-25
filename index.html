@@ -1058,6 +1058,9 @@ var _appShown       = false;
 var _listeners      = {};     // { math: AbortController, svt: ..., pc: ... }
 var _listenerActive = {};     // { math: bool, svt: bool, pc: bool }
 var _ignoreRemote   = {};     // { math: bool } — suppress incoming while we're writing
+var _pollers        = {};     // { math: intervalId, svt: intervalId, pc: intervalId }
+var _pollingBusy    = {};     // { math: bool, svt: bool, pc: bool }
+var _pollIntervalMs = 1500;   // ms between remote refreshes
 
 // ── APP STATE ───────────────────────────────────────────────────────
 var exercises = { math: [], svt: [], pc: [] };
@@ -1151,102 +1154,56 @@ function _fsGet(subj) {
 // ════════════════════════════════════════════════════════════════════
 
 function _startListener(subj) {
-  // Cancel any existing listener for this subject
+  // Firestore "documents:listen" isn't supported/working reliably with this
+  // pure-REST + access-token setup, so we poll instead.
   _stopListener(subj);
 
   if (!_currentUser || !_accessToken) return;
 
-  var controller = new AbortController();
-  _listeners[subj] = controller;
   _listenerActive[subj] = false;
-
   setSyncStatus('syncing', 'Connexion temps réel…');
 
-  var docPath = 'projects/' + FS_PROJECT + '/databases/(default)/documents'
-    + '/users/' + _currentUser.sub + '/subjects/' + subj;
+  function checkAllConnected() {
+    var allConnected = ['math','svt','pc'].every(function(s) { return _listenerActive[s]; });
+    if (allConnected) setSyncStatus('connected', 'Temps réel ✓');
+  }
 
-  var body = JSON.stringify({
-    addTarget: {
-      documents: { documents: [docPath] },
-      targetId: 1
-    }
-  });
+  function pollOnce() {
+    if (_pollingBusy[subj]) return;
+    if (!_currentUser || !_accessToken) return;
+    _pollingBusy[subj] = true;
 
-  fetch('https://firestore.googleapis.com/v1/projects/' + FS_PROJECT +
-        '/databases/(default)/documents:listen', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer ' + _accessToken
-    },
-    body: body,
-    signal: controller.signal
-  }).then(function(response) {
-    if (!response.ok) {
-      response.text().then(function(t) { console.warn('Listen failed ' + subj + ':', t.slice(0,100)); });
-      // Retry after delay
-      setTimeout(function() { _startListener(subj); }, 5000);
-      return;
-    }
-
-    var reader = response.body.getReader();
-    var decoder = new TextDecoder();
-    var buffer = '';
-
-    function read() {
-      reader.read().then(function(result) {
-        if (result.done) {
-          _listenerActive[subj] = false;
-          // Stream closed — reconnect after a moment
-          if (!controller.signal.aborted) {
-            setSyncStatus('error', 'Reconnexion…');
-            setTimeout(function() { _startListener(subj); }, 3000);
-          }
-          return;
-        }
-
-        buffer += decoder.decode(result.value, { stream: true });
-
-        // Split on newlines — each complete JSON object is on its own line
-        var lines = buffer.split('\n');
-        buffer = lines.pop(); // keep incomplete last line
-
-        lines.forEach(function(line) {
-          line = line.trim();
-          if (!line) return;
-          try {
-            var msg = JSON.parse(line);
-            _handleListenMessage(subj, msg);
-          } catch(e) {
-            // partial JSON — ignore, will be completed on next chunk
-          }
-        });
-
-        read();
-      }).catch(function(err) {
-        if (!controller.signal.aborted) {
-          console.warn('Read error ' + subj + ':', err);
-          setSyncStatus('error', 'Reconnexion…');
-          setTimeout(function() { _startListener(subj); }, 3000);
-        }
-      });
-    }
-
-    read();
-  }).catch(function(err) {
-    if (!controller.signal.aborted) {
-      console.warn('Listen fetch error ' + subj + ':', err);
+    _fsGet(subj).then(function(remoteData) {
+      if (Array.isArray(remoteData)) {
+        _applyRemoteData(subj, remoteData);
+        _listenerActive[subj] = true;
+        checkAllConnected();
+      }
+    }).catch(function(err) {
+      console.warn('Poll failed ' + subj + ':', err);
       setSyncStatus('error', 'Hors ligne');
-      setTimeout(function() { _startListener(subj); }, 5000);
-    }
-  });
+    }).then(function() {
+      _pollingBusy[subj] = false;
+    }, function() {
+      _pollingBusy[subj] = false;
+    });
+  }
+
+  // Immediate refresh, then periodic
+  pollOnce();
+  _pollers[subj] = setInterval(pollOnce, _pollIntervalMs);
 }
 
 function _stopListener(subj) {
+  if (_pollers[subj]) {
+    clearInterval(_pollers[subj]);
+    _pollers[subj] = null;
+  }
   if (_listeners[subj]) {
-    _listeners[subj].abort();
+    try { _listeners[subj].abort(); } catch(e) {}
     _listeners[subj] = null;
   }
+  _pollingBusy[subj] = false;
   _listenerActive[subj] = false;
 }
 
@@ -1315,8 +1272,9 @@ function _applyRemoteData(subj, remoteData) {
     ex.logOpen = uiPrev ? !!uiPrev.logOpen : false;
 
     if (d.startedAt) {
-      ex.startedAt  = d.startedAt;
-      ex.elapsed    = Math.max(0, now - d.startedAt);
+      // Anchor to our local clock using the remotely-provided elapsed.
+      // This avoids drift between device clocks.
+      ex.startedAt  = now - ex.elapsed;
       ex.running    = true;
       activeEx[subj] = ex.id;
       scheduleResume(subj, ex);
@@ -1416,9 +1374,13 @@ function _applySubjectData(subj, data) {
   if (!data) return;
   var now = Date.now();
   data.forEach(function(d) {
-    var resumedElapsed = d.startedAt ? Math.max(0, now - d.startedAt) : (d.elapsed || 0);
+    var resumedElapsed = d.elapsed || 0;
     var ex = makeEx(d.id, d.label, resumedElapsed, d.stops || [], d.photos || {});
-    if (d.startedAt) { ex.startedAt = now - resumedElapsed; scheduleResume(subj, ex); }
+    if (d.startedAt) {
+      // Anchor to local clock to prevent device clock drift.
+      ex.startedAt = now - resumedElapsed;
+      scheduleResume(subj, ex);
+    }
     exercises[subj].push(ex);
     if (d.id >= nextId) nextId = d.id + 1;
   });
