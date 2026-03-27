@@ -7,18 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Study Timer</title>
-<script>
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.getRegistrations().then(function(regs) {
-    regs.forEach(function(reg) { reg.update(); });
-  });
-  caches.keys().then(function(keys) {
-    keys.forEach(function(k) { caches.delete(k); });
-  });
-}
-</script>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Bricolage+Grotesque:wght@400;500;600;700;800&family=Instrument+Serif:ital@0;1&family=Geist+Mono:wght@300;400&display=swap" rel="stylesheet">
-<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -101,7 +90,6 @@ header h1 {
   letter-spacing: -0.01em;
   line-height: 1;
   color: var(--text);
-  position: relative;
 }
 
 header h1 span.h-math { color: var(--math); }
@@ -118,8 +106,8 @@ header h1 span.h-pc   { color: var(--pc); }
   text-transform: uppercase;
 }
 
-/* ── SYNC STATUS INDICATOR ── */
-.sync-status {
+/* ── LOCAL BADGE ── */
+.local-badge {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
@@ -128,39 +116,15 @@ header h1 span.h-pc   { color: var(--pc); }
   letter-spacing: 0.1em;
   padding: 0.25rem 0.7rem;
   border-radius: 99px;
-  margin-top: 0.5rem;
-  border: 1px solid transparent;
-  transition: all 0.3s ease;
-  opacity: 0;
+  margin-top: 0.6rem;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  color: var(--text3);
 }
-.sync-status.visible { opacity: 1; }
-.sync-status.connected {
-  background: var(--svt-dim);
-  border-color: var(--svt-mid);
-  color: var(--svt);
-}
-.sync-status.syncing {
-  background: rgba(91,141,238,0.08);
-  border-color: rgba(91,141,238,0.3);
-  color: var(--pc);
-}
-.sync-status.error {
-  background: rgba(239,68,68,0.08);
-  border-color: rgba(239,68,68,0.25);
-  color: #f87171;
-}
-.sync-dot {
+.local-badge-dot {
   width: 5px; height: 5px;
   border-radius: 50%;
-  background: currentColor;
-  flex-shrink: 0;
-}
-.sync-status.connected .sync-dot { animation: pulse 2s ease-in-out infinite; }
-.sync-status.syncing .sync-dot { animation: spin-pulse 0.8s linear infinite; }
-
-@keyframes spin-pulse {
-  0%,100% { opacity: 1; transform: scale(1.3); }
-  50% { opacity: 0.3; transform: scale(0.7); }
+  background: var(--text3);
 }
 
 /* ── TAB BAR ── */
@@ -173,7 +137,6 @@ header h1 span.h-pc   { color: var(--pc); }
   -webkit-backdrop-filter: blur(24px) saturate(1.5);
   border-top: 1px solid var(--border);
   display: flex;
-  padding-bottom: var(--safe-bottom);
   padding: 4px 8px calc(4px + var(--safe-bottom));
   gap: 4px;
 }
@@ -196,8 +159,6 @@ header h1 span.h-pc   { color: var(--pc); }
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.34,1.56,0.64,1);
   touch-action: manipulation;
-  position: relative;
-  overflow: hidden;
 }
 
 .tab-icon {
@@ -294,7 +255,6 @@ header h1 span.h-pc   { color: var(--pc); }
   overflow: hidden;
   transition: border-color 0.25s, box-shadow 0.25s;
   animation: slideIn 0.25s cubic-bezier(0.22,1,0.36,1);
-  position: relative;
 }
 
 @keyframes slideIn {
@@ -379,28 +339,24 @@ header h1 span.h-pc   { color: var(--pc); }
 }
 
 .btn-delete-ex {
-  background: none;
-  border: none;
-  color: var(--text3);
-  font-size: 0.9rem;
-  cursor: pointer;
-  padding: 2px 0 0 0.25rem;
-  flex-shrink: 0;
-  touch-action: manipulation;
-  opacity: 0.5;
-  transition: opacity 0.15s, color 0.15s;
-  line-height: 1;
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 7px;
+  background: none; border: none; color: var(--text3);
+  font-size: 0.9rem; cursor: pointer; padding: 2px 0 0 0.25rem;
+  flex-shrink: 0; touch-action: manipulation; opacity: 0.5;
+  transition: opacity 0.15s, color 0.15s; line-height: 1;
+  width: 28px; height: 28px; display: flex; align-items: center;
+  justify-content: center; border-radius: 7px;
 }
 .btn-delete-ex:active { opacity: 1; color: #ef4444; background: rgba(239,68,68,0.12); }
 
 /* ── TIMER ROW ── */
 .ex-timer-row {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.75rem;
+}
+
+.ex-timer-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -439,19 +395,6 @@ header h1 span.h-pc   { color: var(--pc); }
 .ex-wkday .wd-sep { margin: 0 0.3rem; opacity: 0.3; }
 
 /* ── CONTROLS ── */
-.ex-timer-row {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0.75rem;
-}
-
-.ex-timer-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-
 .ex-controls {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
@@ -486,10 +429,7 @@ header h1 span.h-pc   { color: var(--pc); }
 .btn-ex:active { transform: scale(0.92); }
 .btn-ex:disabled { opacity: 0.22; pointer-events: none; }
 
-.btn-ex-start {
-  color: #080b10;
-  font-size: 0.8rem;
-}
+.btn-ex-start { color: #080b10; font-size: 0.8rem; }
 [data-panel="math"] .btn-ex-start { background: var(--math); box-shadow: 0 3px 12px var(--math-glow); }
 [data-panel="svt"]  .btn-ex-start { background: var(--svt);  box-shadow: 0 3px 12px var(--svt-glow); }
 [data-panel="pc"]   .btn-ex-start { background: var(--pc);   color: #fff; box-shadow: 0 3px 12px var(--pc-glow); }
@@ -509,7 +449,7 @@ header h1 span.h-pc   { color: var(--pc); }
   font-size: 1.1rem;
 }
 
-/* ── PHOTO BUTTON (secondary row) ── */
+/* ── PHOTO BUTTON ── */
 .btn-ex-photo {
   background: var(--surface2);
   border: 1px dashed var(--border2);
@@ -587,23 +527,24 @@ header h1 span.h-pc   { color: var(--pc); }
   border-bottom: 1px solid var(--border);
   font-family: 'DM Mono', monospace;
   font-size: 0.68rem;
+  flex-wrap: wrap;
 }
 .log-row:last-child { border-bottom: none; }
-.log-row-num   { color: var(--text3); width: 18px; text-align: right; flex-shrink: 0; }
-.log-row-dur   { font-weight: 500; flex: 1; }
+.log-row-num  { color: var(--text3); width: 18px; text-align: right; flex-shrink: 0; }
+.log-row-dur  { font-weight: 500; flex: 1; }
 [data-panel="math"] .log-row-dur { color: var(--math); }
 [data-panel="svt"]  .log-row-dur { color: var(--svt); }
 [data-panel="pc"]   .log-row-dur { color: var(--pc); }
 .log-row-time { color: var(--text3); flex-shrink: 0; }
 
-.log-row { flex-wrap: wrap; }
 .btn-photo-add {
   background: none; border: 1px dashed var(--border2); border-radius: 6px;
   color: var(--text3); font-size: 0.7rem; padding: 0.15rem 0.5rem;
-  cursor: pointer; touch-action: manipulation; transition: border-color 0.15s, color 0.15s;
-  flex-shrink: 0;
+  cursor: pointer; touch-action: manipulation;
+  transition: border-color 0.15s, color 0.15s; flex-shrink: 0;
 }
 .btn-photo-add:active { color: var(--text); border-color: var(--text2); }
+
 .attempt-photos {
   width: 100%; display: flex; flex-wrap: wrap; gap: 0.4rem;
   padding: 0.4rem 0 0.2rem 22px;
@@ -622,6 +563,7 @@ header h1 span.h-pc   { color: var(--pc); }
   display: flex; align-items: center; justify-content: center;
   cursor: pointer; touch-action: manipulation; line-height: 1;
 }
+
 #photo-lightbox {
   display: none; position: fixed; inset: 0; z-index: 9999;
   background: rgba(0,0,0,0.92); align-items: center; justify-content: center;
@@ -635,24 +577,14 @@ header h1 span.h-pc   { color: var(--pc); }
   color: var(--text); font-size: 1.1rem; width: 36px; height: 36px;
   display: flex; align-items: center; justify-content: center; cursor: pointer;
 }
+
 .btn-toggle-log {
-  background: none;
-  border: none;
-  border-top: 1px solid var(--border);
-  width: 100%;
-  padding: 0.55rem 1rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.35rem;
-  color: var(--text3);
-  font-family: 'DM Mono', monospace;
-  font-size: 0.6rem;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  cursor: pointer;
-  touch-action: manipulation;
-  transition: color 0.15s, background 0.15s;
+  background: none; border: none; border-top: 1px solid var(--border);
+  width: 100%; padding: 0.55rem 1rem;
+  display: flex; align-items: center; justify-content: center; gap: 0.35rem;
+  color: var(--text3); font-family: 'DM Mono', monospace; font-size: 0.6rem;
+  letter-spacing: 0.07em; text-transform: uppercase; cursor: pointer;
+  touch-action: manipulation; transition: color 0.15s, background 0.15s;
 }
 .btn-toggle-log:active { color: var(--text); background: var(--surface2); }
 .btn-toggle-log .chevron { transition: transform 0.28s cubic-bezier(0.22,1,0.36,1); display: inline-block; font-size: 0.75rem; }
@@ -751,214 +683,19 @@ header h1 span.h-pc   { color: var(--pc); }
   .btn-ex { font-size: 0.75rem; padding: 0.7rem 0.4rem; }
   .btn-ex-photo { font-size: 0.72rem; padding: 0.7rem 0.4rem; }
 }
-
-/* ── LOGIN SCREEN ── */
-#login-screen {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  background: var(--bg);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 2rem;
-  background-image:
-    radial-gradient(ellipse 70% 50% at 15% 0%, rgba(255,107,53,0.07) 0%, transparent 55%),
-    radial-gradient(ellipse 50% 40% at 85% 100%, rgba(91,141,238,0.09) 0%, transparent 55%),
-    radial-gradient(ellipse 40% 30% at 50% 50%, rgba(0,214,143,0.04) 0%, transparent 60%);
-}
-#login-screen.hidden { display: none; }
-
-.login-logo {
-  font-family: 'Instrument Serif', serif;
-  font-size: clamp(2.4rem, 12vw, 3.8rem);
-  font-weight: 400;
-  font-style: italic;
-  letter-spacing: -0.01em;
-  line-height: 1;
-  color: var(--text);
-  margin-bottom: 0.4rem;
-  text-align: center;
-}
-.login-logo span.h-math { color: var(--math); }
-.login-logo span.h-svt  { color: var(--svt); }
-.login-logo span.h-pc   { color: var(--pc); }
-
-.login-sub {
-  font-family: 'Geist Mono', 'DM Mono', monospace;
-  font-weight: 300;
-  font-size: 0.58rem;
-  color: var(--text3);
-  letter-spacing: 0.18em;
-  margin-bottom: 2.8rem;
-  text-transform: uppercase;
-  text-align: center;
-}
-
-.login-card {
-  background: var(--surface);
-  border: 1px solid var(--border2);
-  border-radius: 24px;
-  padding: 2rem 1.8rem;
-  width: 100%;
-  max-width: 340px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1.2rem;
-}
-
-.login-eyebrow {
-  font-family: 'DM Mono', monospace;
-  font-size: 0.58rem;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--text3);
-  text-align: center;
-}
-
-#google-signin-btn {
-  width: 100%;
-  display: flex;
-  justify-content: center;
-}
-
-.login-divider {
-  width: 100%;
-  border: none;
-  border-top: 1px solid var(--border);
-  margin: 0;
-}
-
-.login-disclaimer {
-  font-family: 'DM Mono', monospace;
-  font-size: 0.52rem;
-  color: var(--text3);
-  text-align: center;
-  letter-spacing: 0.04em;
-  line-height: 1.6;
-}
-
-/* ── USER PILL ── */
-.user-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  background: var(--surface);
-  border: 1px solid var(--border2);
-  border-radius: 99px;
-  padding: 0.3rem 0.75rem 0.3rem 0.35rem;
-  margin-top: 0.7rem;
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
-  touch-action: manipulation;
-}
-.user-pill:active { background: var(--surface2); }
-
-.user-avatar {
-  width: 24px; height: 24px;
-  border-radius: 50%;
-  object-fit: cover;
-  flex-shrink: 0;
-  background: var(--surface2);
-}
-.user-name {
-  font-family: 'DM Mono', monospace;
-  font-size: 0.6rem;
-  color: var(--text2);
-  letter-spacing: 0.04em;
-  max-width: 120px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.user-signout-icon { font-size: 0.65rem; color: var(--text3); margin-left: 0.1rem; }
-
-/* ── SIGNOUT MODAL ── */
-#signout-modal {
-  position: fixed;
-  inset: 0;
-  z-index: 500;
-  background: rgba(0,0,0,0.7);
-  display: none;
-  align-items: flex-end;
-  justify-content: center;
-  padding-bottom: calc(var(--safe-bottom) + 1rem);
-}
-#signout-modal.open { display: flex; }
-.signout-sheet {
-  background: var(--surface);
-  border: 1px solid var(--border2);
-  border-radius: 20px;
-  padding: 1.4rem 1.4rem 1rem;
-  width: 100%;
-  max-width: 360px;
-  display: flex;
-  flex-direction: column;
-  gap: 0.8rem;
-}
-.signout-title { font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 1rem; color: var(--text); }
-.signout-desc { font-family: 'DM Mono', monospace; font-size: 0.62rem; color: var(--text3); letter-spacing: 0.04em; line-height: 1.6; }
-.signout-actions { display: flex; gap: 0.6rem; margin-top: 0.2rem; }
-.btn-signout-cancel, .btn-signout-confirm {
-  flex: 1; border: none; border-radius: 12px; padding: 0.75rem;
-  font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 0.82rem;
-  cursor: pointer; touch-action: manipulation; transition: opacity 0.15s, transform 0.15s;
-}
-.btn-signout-cancel:active, .btn-signout-confirm:active { transform: scale(0.95); }
-.btn-signout-cancel { background: var(--surface2); color: var(--text2); border: 1px solid var(--border2); }
-.btn-signout-confirm { background: rgba(239,68,68,0.15); color: #f87171; border: 1px solid rgba(239,68,68,0.25); }
 </style>
 </head>
 <body>
-
-<!-- ── LOGIN SCREEN ── -->
-<div id="login-screen">
-  <div class="login-logo">
-    Study <span class="h-math">T</span><span class="h-svt">i</span><span class="h-pc">m</span>er
-  </div>
-  <p class="login-sub">// track · pause · conquer</p>
-  <div class="login-card">
-    <p class="login-eyebrow">Connecte-toi pour continuer</p>
-    <div id="google-signin-btn"></div>
-    <hr class="login-divider">
-    <p class="login-disclaimer">
-      Tes données sont synchronisées en temps réel.<br>
-      Google est utilisé uniquement pour t'identifier.
-    </p>
-  </div>
-</div>
-
-<!-- ── SIGNOUT MODAL ── -->
-<div id="signout-modal">
-  <div class="signout-sheet">
-    <div class="signout-title">Se déconnecter ?</div>
-    <div class="signout-desc">
-      Tes exercices et chronomètres sont sauvegardés.<br>
-      Tu retrouveras tout en te reconnectant.
-    </div>
-    <div class="signout-actions">
-      <button class="btn-signout-cancel" onclick="closeSignoutModal()">Annuler</button>
-      <button class="btn-signout-confirm" onclick="doSignOut()">Déconnecter</button>
-    </div>
-  </div>
-</div>
 
 <header>
   <div class="header-eyebrow">study tracker</div>
   <h1>Study <span class="h-math">T</span><span class="h-svt">i</span><span class="h-pc">m</span>er</h1>
   <p class="header-sub">// track · pause · conquer</p>
-  <div id="user-pill-wrap" style="display:none; justify-content:center; align-items:center; gap:0.5rem; margin-top:0.5rem; flex-direction:column;">
-    <button class="user-pill" onclick="openSignoutModal()" title="Se déconnecter">
-      <img id="user-avatar" class="user-avatar" src="" alt="avatar">
-      <span id="user-name" class="user-name"></span>
-      <span class="user-signout-icon">↪</span>
-    </button>
-    <div id="sync-status" class="sync-status">
-      <div class="sync-dot"></div>
-      <span id="sync-status-text">Connexion…</span>
-    </div>
+  <div style="display:flex;justify-content:center;margin-top:0.6rem;">
+    <span class="local-badge">
+      <span class="local-badge-dot"></span>
+      local · this device only
+    </span>
   </div>
 </header>
 
@@ -1072,482 +809,127 @@ header h1 span.h-pc   { color: var(--pc); }
 
 <script>
 // ═══════════════════════════════════════════════════════════════════
-// STUDY TIMER — Polling-based sync via Firestore REST
-// No Firebase SDK. Pure REST + Google Identity Services.
+// STUDY TIMER — localStorage only, device-independent
+// Timer persistence fix: store absolute wall-clock startedAt so
+// elapsed time accumulates correctly even when the page is closed.
 // ═══════════════════════════════════════════════════════════════════
 
-var GOOGLE_CLIENT_ID = '669409125162-99r1u9jbes0na5g7pucdjeuvrl4j9abl.apps.googleusercontent.com';
-var FS_PROJECT       = 'sauerkraut-exercice-4c3b4';
-var FS_BASE          = 'https://firestore.googleapis.com/v1/projects/' + FS_PROJECT + '/databases/(default)/documents';
+var LS_PREFIX = 'st5_';  // new prefix to avoid conflicts with old data
 
-// ── AUTH STATE ──────────────────────────────────────────────────────
-var _currentUser    = null;
-var _userPrefix     = 'anon';
-var _accessToken    = null;
-var _accessTokenExp = 0;
-var _tokenClient    = null;
-var _tokenQueue     = [];
-var _tokenInflight  = false;
-var _appShown       = false;
-
-// ── POLLING STATE ───────────────────────────────────────────────────
-var _pollers        = {};
-var _pollingBusy    = {};
-var _pollIntervalMs = 2000;
-
-var _subjectReady   = { math: false, svt: false, pc: false };
-
-var _offlineTimer      = null;
-var _isActuallyOffline = false;
-
-// ── APP STATE ───────────────────────────────────────────────────────
 var exercises = { math: [], svt: [], pc: [] };
 var activeEx  = { math: null, svt: null, pc: null };
 var nextId    = 1;
 
-// ── IGNORE REMOTE ECHO ──────────────────────────────────────────────
-var _ignoreRemote = {};
-
 // ════════════════════════════════════════════════════════════════════
-// FIRESTORE VALUE CONVERTERS
+// STORAGE KEY
 // ════════════════════════════════════════════════════════════════════
 
-function _toFsValue(v) {
-  if (v === null || v === undefined) return { nullValue: null };
-  if (typeof v === 'boolean')        return { booleanValue: v };
-  if (typeof v === 'number')         return Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v };
-  if (typeof v === 'string')         return { stringValue: v };
-  if (Array.isArray(v))              return { arrayValue: { values: v.map(_toFsValue) } };
-  if (typeof v === 'object') {
-    var fields = {};
-    Object.keys(v).forEach(function(k) { fields[k] = _toFsValue(v[k]); });
-    return { mapValue: { fields: fields } };
-  }
-  return { stringValue: String(v) };
-}
-
-function _fromFsValue(fv) {
-  if (!fv) return null;
-  if ('nullValue'    in fv) return null;
-  if ('booleanValue' in fv) return fv.booleanValue;
-  if ('integerValue' in fv) return parseInt(fv.integerValue, 10);
-  if ('doubleValue'  in fv) return fv.doubleValue;
-  if ('stringValue'  in fv) return fv.stringValue;
-  if ('arrayValue'   in fv) return (fv.arrayValue.values || []).map(_fromFsValue);
-  if ('mapValue'     in fv) {
-    var obj = {};
-    var fields = fv.mapValue.fields || {};
-    Object.keys(fields).forEach(function(k) { obj[k] = _fromFsValue(fields[k]); });
-    return obj;
-  }
-  return null;
-}
+function lsKey(subj) { return LS_PREFIX + subj; }
 
 // ════════════════════════════════════════════════════════════════════
-// FIRESTORE REST: PATCH (write) + GET (read)
-// ════════════════════════════════════════════════════════════════════
-
-function _fsUrl(subj) {
-  return FS_BASE + '/users/' + encodeURIComponent(_currentUser.sub) + '/subjects/' + subj;
-}
-
-function _fsPatch(subj, data) {
-  if (!_currentUser || !_accessToken) return Promise.resolve();
-  var fields = {
-    exercises: _toFsValue(data),
-    updatedAt: _toFsValue(Date.now())
-  };
-  return fetch(_fsUrl(subj) + '?updateMask.fieldPaths=exercises&updateMask.fieldPaths=updatedAt', {
-    method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer ' + _accessToken
-    },
-    body: JSON.stringify({ fields: fields })
-  }).then(function(r) {
-    if (r.status === 401) { _accessToken = null; _accessTokenExp = 0; }
-    if (!r.ok) {
-      return r.text().then(function(t) {
-        throw new Error('PATCH ' + r.status + ': ' + String(t).slice(0, 120));
-      });
-    }
-    return r;
-  });
-}
-
-function _fsGet(subj) {
-  if (!_currentUser || !_accessToken) return Promise.resolve(null);
-  return fetch(_fsUrl(subj), {
-    headers: { 'Authorization': 'Bearer ' + _accessToken }
-  }).then(function(r) {
-    if (r.status === 401) { _accessToken = null; _accessTokenExp = 0; return null; }
-    if (r.status === 404) return [];
-    if (!r.ok) {
-      return r.text().then(function(t) {
-        throw new Error('GET ' + r.status + ': ' + String(t).slice(0, 120));
-      });
-    }
-    return r.json().then(function(doc) {
-      if (!doc.fields || !doc.fields.exercises) return [];
-      return _fromFsValue(doc.fields.exercises) || [];
-    });
-  });
-}
-
-// ════════════════════════════════════════════════════════════════════
-// POLLING
-// ════════════════════════════════════════════════════════════════════
-
-function _startPoller(subj) {
-  _stopPoller(subj);
-  if (!_currentUser || !_accessToken) return;
-
-  function pollOnce() {
-    if (_pollingBusy[subj] || !_currentUser || !_accessToken) return;
-    _pollingBusy[subj] = true;
-
-    _fsGet(subj).then(function(remoteData) {
-      if (!_ignoreRemote[subj]) {
-        _applyRemoteData(subj, remoteData);
-      }
-
-      _subjectReady[subj] = true;
-      _pollingBusy[subj]  = false;
-
-      if (_offlineTimer) { clearTimeout(_offlineTimer); _offlineTimer = null; }
-      _isActuallyOffline = false;
-
-      var allReady = _subjectReady.math && _subjectReady.svt && _subjectReady.pc;
-      if (allReady) setSyncStatus('connected', 'Temps réel ✓');
-
-    }).catch(function(err) {
-      console.warn('Poll failed ' + subj + ':', err);
-      _pollingBusy[subj] = false;
-      var allReady = _subjectReady.math && _subjectReady.svt && _subjectReady.pc;
-      if (!allReady) setSyncStatus('error', 'Hors ligne');
-    });
-  }
-
-  pollOnce();
-  _pollers[subj] = setInterval(pollOnce, _pollIntervalMs);
-}
-
-function _stopPoller(subj) {
-  if (_pollers[subj]) { clearInterval(_pollers[subj]); _pollers[subj] = null; }
-  _pollingBusy[subj] = false;
-}
-
-function _stopAllPollers() {
-  ['math', 'svt', 'pc'].forEach(_stopPoller);
-}
-
-// ════════════════════════════════════════════════════════════════════
-// APPLY REMOTE DATA
-// ════════════════════════════════════════════════════════════════════
-
-function _applyRemoteData(subj, remoteData) {
-  if (!Array.isArray(remoteData)) return;
-  var now = Date.now();
-  var localMap = {};
-  exercises[subj].forEach(function(e) { localMap[e.id] = e; });
-  var newList = [];
-  var newNextId = nextId;
-  activeEx[subj] = null;
-
-  remoteData.forEach(function(d) {
-    if (!d || d.id == null) return;
-    var uiPrev = localMap[d.id];
-    var ex = makeEx(d.id, d.label, d.elapsed || 0, d.stops || [], d.photos || {});
-    ex.logOpen = uiPrev ? !!uiPrev.logOpen : false;
-
-    if (d.startedAt) {
-      ex.startedAt  = now - ex.elapsed;
-      ex.running    = true;
-      activeEx[subj] = ex.id;
-      scheduleResume(subj, ex);
-    }
-
-    newList.push(ex);
-    if (d.id >= newNextId) newNextId = d.id + 1;
-  });
-
-  exercises[subj] = newList;
-  nextId = Math.max(nextId, newNextId);
-
-  try { localStorage.setItem(_userPrefix + 'st4_' + subj, JSON.stringify(remoteData)); } catch(e) {}
-
-  renderList(subj);
-  updateChips(subj);
-}
-
-// ════════════════════════════════════════════════════════════════════
-// SAVE — with token-refresh retry on failure
+// SAVE
+// The critical fix: we save `startedAtWall` — the absolute epoch ms
+// at which this timer started (or the epoch adjusted for elapsed).
+// On reload we compute elapsed = now - startedAtWall, no matter
+// how long the page was closed.
 // ════════════════════════════════════════════════════════════════════
 
 function saveSubject(subj) {
   var data = exercises[subj].map(function(e) {
     return {
-      id:        e.id,
-      label:     e.label,
-      elapsed:   e.elapsed,
-      startedAt: e.running ? e.startedAt : null,
-      stops:     e.stops,
-      photos:    e.photos || {}
+      id:           e.id,
+      label:        e.label,
+      // If running: save the wall-clock start point.
+      // If stopped: save elapsed directly (startedAtWall = null).
+      elapsed:      e.running ? null : e.elapsed,
+      startedAtWall: e.running ? e.startedAtWall : null,
+      stops:        e.stops,
+      photos:       e.photos || {}
     };
   });
-
-  try { localStorage.setItem(_userPrefix + 'st4_' + subj, JSON.stringify(data)); } catch(e) {}
-
-  if (!_currentUser || !_accessToken) return;
-
-  // Suppress echo from our own write for 2s
-  _ignoreRemote[subj] = true;
-  clearTimeout(_ignoreRemote[subj + '_timer']);
-  _ignoreRemote[subj + '_timer'] = setTimeout(function() {
-    _ignoreRemote[subj] = false;
-  }, 2000);
-
-  _fsPatch(subj, data).then(function() {
-    // Write succeeded — ensure status shows connected
-    setSyncStatus('connected', 'Temps réel ✓');
-  }).catch(function(err) {
-    // Token may have expired mid-session — clear it and refresh, then retry once
-    if (!_accessToken) {
-      _getAccessToken(function() {
-        _fsPatch(subj, data).then(function() {
-          setSyncStatus('connected', 'Temps réel ✓');
-        }).catch(function(err2) {
-          setSyncStatus('error', 'Écriture échouée');
-          console.warn('Write failed after token retry (' + subj + '):', err2);
-        });
-      });
-    } else {
-      setSyncStatus('error', 'Écriture échouée');
-      console.warn('Write failed (' + subj + '):', err);
-    }
-  });
+  try { localStorage.setItem(lsKey(subj), JSON.stringify(data)); } catch(e) {}
 }
 
 // ════════════════════════════════════════════════════════════════════
-// INITIAL LOAD
+// LOAD
 // ════════════════════════════════════════════════════════════════════
 
-function loadAndListen() {
-  setSyncStatus('syncing', 'Chargement…');
+function loadSubject(subj) {
+  exercises[subj] = [];
+  activeEx[subj] = null;
+  var raw = null;
+  try { raw = localStorage.getItem(lsKey(subj)); } catch(e) {}
+  if (!raw) return;
+  var data;
+  try { data = JSON.parse(raw); } catch(e) { return; }
+  if (!Array.isArray(data)) return;
 
-  var subjects = ['math', 'svt', 'pc'];
-
-  subjects.forEach(function(s) {
-    _subjectReady[s] = false;
-    exercises[s] = [];
-    activeEx[s] = null;
-  });
-  nextId = 1;
-
-  var promises = subjects.map(function(subj) {
-    return _fsGet(subj).then(function(data) {
-      _applySubjectData(subj, data);
-      _subjectReady[subj] = true;
-      try { localStorage.setItem(_userPrefix + 'st4_' + subj, JSON.stringify(data)); } catch(e) {}
-    }).catch(function() {
-      try {
-        var raw = localStorage.getItem(_userPrefix + 'st4_' + subj);
-        if (raw) _applySubjectData(subj, JSON.parse(raw));
-      } catch(e) {}
-      _subjectReady[subj] = true;
-    });
-  });
-
-  Promise.all(promises).then(function() {
-    updateAllChips();
-    startAutoSave();
-    startRafLoop();
-
-    var allReady = _subjectReady.math && _subjectReady.svt && _subjectReady.pc;
-    if (allReady) setSyncStatus('connected', 'Temps réel ✓');
-
-    subjects.forEach(function(subj) { _startPoller(subj); });
-  });
-}
-
-function _applySubjectData(subj, data) {
-  if (!data || !Array.isArray(data)) return;
-  var now = Date.now();
   data.forEach(function(d) {
-    var resumedElapsed = d.elapsed || 0;
-    var ex = makeEx(d.id, d.label, resumedElapsed, d.stops || [], d.photos || {});
-    if (d.startedAt) {
-      ex.startedAt = now - resumedElapsed;
-      scheduleResume(subj, ex);
+    var elapsed = 0;
+    var isRunning = false;
+    var startedAtWall = null;
+
+    if (d.startedAtWall) {
+      // Timer was running when the page was closed:
+      // compute how much total time has elapsed since it started
+      startedAtWall = d.startedAtWall;
+      elapsed = Date.now() - startedAtWall;
+      isRunning = true;
+    } else {
+      elapsed = d.elapsed || 0;
     }
+
+    var ex = makeEx(d.id, d.label, elapsed, d.stops || [], d.photos || {});
+    ex.startedAtWall = startedAtWall;
+
+    if (isRunning) {
+      ex.running = true;
+      activeEx[subj] = ex.id;
+    }
+
     exercises[subj].push(ex);
     if (d.id >= nextId) nextId = d.id + 1;
   });
+
   renderList(subj);
 }
 
 // ════════════════════════════════════════════════════════════════════
-// SYNC STATUS UI
+// HELPERS
 // ════════════════════════════════════════════════════════════════════
 
-function setSyncStatus(state, text) {
-  var el = document.getElementById('sync-status');
-  var txt = document.getElementById('sync-status-text');
-  if (!el) return;
-  el.className = 'sync-status visible ' + state;
-  if (txt) txt.textContent = text;
+function pad(n) { return String(n).padStart(2, '0'); }
+
+function fmtTime(ms) {
+  var total = Math.floor(Math.max(0, ms) / 1000);
+  var secs  = total % 60;
+  var mins  = Math.floor(total / 60) % 60;
+  var hours = Math.floor(total / 3600) % 24;
+  var days  = Math.floor(total / 86400) % 7;
+  var weeks = Math.floor(total / 604800);
+  if (weeks > 0) return weeks + 's' + days + 'j ' + pad(hours) + ':' + pad(mins) + ':' + pad(secs);
+  if (days  > 0) return days + 'j ' + pad(hours) + ':' + pad(mins) + ':' + pad(secs);
+  return pad(hours) + ':' + pad(mins) + ':' + pad(secs);
 }
 
-// ════════════════════════════════════════════════════════════════════
-// GOOGLE AUTH
-// ════════════════════════════════════════════════════════════════════
-
-function parseJwt(token) {
-  try {
-    return JSON.parse(atob(token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
-  } catch(e) { return null; }
+function wkdayHtml(ms) {
+  var total = Math.floor(Math.max(0, ms) / 1000);
+  var days  = Math.floor(total / 86400) % 7;
+  var weeks = Math.floor(total / 604800);
+  return 'Sem: <span class="wd-val">' + weeks + '</span>' +
+         '<span class="wd-sep">·</span>' +
+         'Jours: <span class="wd-val">' + days + '</span>';
 }
 
-function onGoogleCredential(response) {
-  var payload = parseJwt(response.credential);
-  if (!payload) { alert('Erreur de connexion. Réessaie.'); return; }
+function isURL(str) { return /^https?:\/\//i.test(str); }
 
-  _currentUser = { sub: payload.sub, name: payload.name, email: payload.email, picture: payload.picture };
-  _userPrefix  = 'u_' + payload.sub + '_';
-
-  localStorage.setItem('st_session', JSON.stringify({
-    sub: _currentUser.sub, name: _currentUser.name,
-    email: _currentUser.email, picture: _currentUser.picture
-  }));
-
-  if (!_appShown) {
-    _appShown = true;
-    _requestAccessToken(function() {
-      showApp();
-      loadAndListen();
-    });
-  } else {
-    _requestAccessToken(function() { loadAndListen(); });
-  }
+function makeEx(id, label, elapsed, stops, photos) {
+  return {
+    id: id, label: label, elapsed: elapsed || 0,
+    running: false, startedAtWall: null,
+    stops: stops || [], photos: photos || {}, logOpen: false
+  };
 }
-
-function _requestAccessToken(callback) {
-  if (!_tokenClient) return;
-  if (callback) _tokenQueue.push(callback);
-  if (_tokenInflight) return;
-  _tokenInflight = true;
-  _tokenClient.requestAccessToken({ prompt: '' });
-}
-
-function _getAccessToken(callback) {
-  if (_accessToken && Date.now() < _accessTokenExp) { callback(_accessToken); return; }
-  _requestAccessToken(function() { callback(_accessToken); });
-}
-
-function showApp() {
-  document.getElementById('login-screen').classList.add('hidden');
-  var wrap = document.getElementById('user-pill-wrap');
-  wrap.style.display = 'flex';
-  document.getElementById('user-avatar').src = _currentUser.picture || '';
-  document.getElementById('user-name').textContent = _currentUser.name || _currentUser.email;
-  _bindPhotoInput();
-  _bindLightbox();
-
-  ['math','svt','pc'].forEach(function(s) { exercises[s] = []; });
-  nextId = 1;
-  ['math','svt','pc'].forEach(function(subj) {
-    try {
-      var raw = localStorage.getItem(_userPrefix + 'st4_' + subj);
-      if (raw) _applySubjectData(subj, JSON.parse(raw));
-    } catch(e) {}
-  });
-  startRafLoop();
-  updateAllChips();
-}
-
-function openSignoutModal()  { document.getElementById('signout-modal').classList.add('open'); }
-function closeSignoutModal() { document.getElementById('signout-modal').classList.remove('open'); }
-
-function doSignOut() {
-  _stopAllPollers();
-  if (window.google && google.accounts) {
-    if (google.accounts.id) google.accounts.id.disableAutoSelect();
-    if (google.accounts.oauth2 && _currentUser && _currentUser.email) {
-      google.accounts.oauth2.revoke(_currentUser.email, function(){});
-    }
-  }
-  _accessToken = null;
-  localStorage.removeItem('st_session');
-  _currentUser = null;
-  _userPrefix  = 'anon';
-  _appShown    = false;
-  closeSignoutModal();
-  window.location.reload();
-}
-
-// ── INIT ────────────────────────────────────────────────────────────
-window.addEventListener('DOMContentLoaded', function() {
-  try {
-    var saved = localStorage.getItem('st_session');
-    if (saved) {
-      var s = JSON.parse(saved);
-      _currentUser = { sub: s.sub, name: s.name, email: s.email, picture: s.picture };
-      _userPrefix  = 'u_' + s.sub + '_';
-    }
-  } catch(e) {}
-
-  function initGSI() {
-    google.accounts.id.initialize({
-      client_id:             GOOGLE_CLIENT_ID,
-      callback:              onGoogleCredential,
-      auto_select:           false,
-      cancel_on_tap_outside: false,
-      use_fedcm_for_prompt:  false
-    });
-    google.accounts.id.renderButton(
-      document.getElementById('google-signin-btn'),
-      { theme: 'filled_black', size: 'large', shape: 'pill', width: 280, text: 'continue_with' }
-    );
-
-    _tokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: GOOGLE_CLIENT_ID,
-      scope:     'https://www.googleapis.com/auth/datastore',
-      callback:  function(tokenResponse) {
-        _tokenInflight = false;
-        if (tokenResponse.error) {
-          _tokenQueue = [];
-          setSyncStatus('error', 'Auth échouée');
-          return;
-        }
-        _accessToken    = tokenResponse.access_token;
-        _accessTokenExp = Date.now() + (tokenResponse.expires_in - 60) * 1000;
-
-        var cbs = _tokenQueue.splice(0);
-        cbs.forEach(function(cb) { cb(); });
-
-        // Schedule token refresh before expiry
-        setTimeout(function() {
-          if (_currentUser) _requestAccessToken(function() {
-            ['math','svt','pc'].forEach(function(s) { _startPoller(s); });
-          });
-        }, (tokenResponse.expires_in - 120) * 1000);
-      }
-    });
-
-    if (_currentUser && !_appShown) {
-      _appShown = true;
-      showApp();
-      _requestAccessToken(function() { loadAndListen(); });
-    }
-  }
-
-  if (window.google && google.accounts && google.accounts.oauth2) {
-    initGSI();
-  } else {
-    document.querySelector('script[src*="accounts.google.com/gsi"]')
-      .addEventListener('load', initGSI);
-  }
-});
 
 // ════════════════════════════════════════════════════════════════════
 // RAF DISPLAY LOOP
@@ -1561,8 +943,8 @@ function startRafLoop() {
     if (!_rafRunning) return;
     ['math','svt','pc'].forEach(function(subj) {
       exercises[subj].forEach(function(ex) {
-        if (!ex.running || !ex.startedAt) return;
-        ex.elapsed = Date.now() - ex.startedAt;
+        if (!ex.running || !ex.startedAtWall) return;
+        ex.elapsed = Date.now() - ex.startedAtWall;
         updateCardTimer(subj, ex.id);
       });
       updateChips(subj);
@@ -1571,7 +953,9 @@ function startRafLoop() {
   })();
 }
 
-// ── WEB WORKER AUTOSAVE ─────────────────────────────────────────────
+// ── AUTOSAVE: periodic save of running timers ────────────────────
+// Saves every second so that if the page is force-closed the
+// startedAtWall is persisted and we can recover on next open.
 var _workerBlob = new Blob(['setInterval(function(){ postMessage("tick"); }, 1000);'], { type: 'application/javascript' });
 var _worker = null;
 
@@ -1594,47 +978,21 @@ function startAutoSave() {
 }
 
 window.addEventListener('beforeunload', function() {
-  ['math','svt','pc'].forEach(function(subj) {
-    if (exercises[subj].some(function(e) { return e.running; })) saveSubject(subj);
-  });
+  ['math','svt','pc'].forEach(saveSubject);
 });
 
-// ════════════════════════════════════════════════════════════════════
-// HELPERS
-// ════════════════════════════════════════════════════════════════════
-
-function pad(n) { return String(n).padStart(2, '0'); }
-
-function fmtTime(ms) {
-  var total = Math.floor(ms / 1000);
-  var secs  = total % 60;
-  var mins  = Math.floor(total / 60) % 60;
-  var hours = Math.floor(total / 3600) % 24;
-  var days  = Math.floor(total / 86400) % 7;
-  var weeks = Math.floor(total / 604800);
-  if (weeks > 0) return weeks + 's' + days + 'j ' + pad(hours) + ':' + pad(mins) + ':' + pad(secs);
-  if (days  > 0) return days + 'j ' + pad(hours) + ':' + pad(mins) + ':' + pad(secs);
-  return pad(hours) + ':' + pad(mins) + ':' + pad(secs);
-}
-
-function wkdayHtml(ms) {
-  var total = Math.floor(ms / 1000);
-  var days  = Math.floor(total / 86400) % 7;
-  var weeks = Math.floor(total / 604800);
-  return 'Sem: <span class="wd-val">' + weeks + '</span>' +
-         '<span class="wd-sep">·</span>' +
-         'Jours: <span class="wd-val">' + days + '</span>';
-}
-
-function isURL(str) { return /^https?:\/\//i.test(str); }
-
-function makeEx(id, label, elapsed, stops, photos) {
-  return {
-    id: id, label: label, elapsed: elapsed || 0,
-    running: false, interval: null, startedAt: null,
-    stops: stops || [], photos: photos || {}, logOpen: false
-  };
-}
+// Resync elapsed when tab becomes visible again (handles sleep/suspend)
+document.addEventListener('visibilitychange', function() {
+  if (document.visibilityState !== 'visible') return;
+  ['math','svt','pc'].forEach(function(subj) {
+    exercises[subj].forEach(function(ex) {
+      if (!ex.running || !ex.startedAtWall) return;
+      ex.elapsed = Date.now() - ex.startedAtWall;
+      updateCardTimer(subj, ex.id);
+      updateChips(subj);
+    });
+  });
+});
 
 // ════════════════════════════════════════════════════════════════════
 // CHIPS
@@ -1701,9 +1059,9 @@ function startEx(subj, id) {
   if (activeEx[subj] !== null && activeEx[subj] !== id) stopEx(subj, activeEx[subj], true);
   var ex = exercises[subj].find(function(e) { return e.id === id; });
   if (!ex || ex.running) return;
-  ex.running   = true;
-  ex.startedAt = Date.now() - ex.elapsed;
-  ex.interval  = null;
+  ex.running = true;
+  // startedAtWall = now minus already-accumulated elapsed
+  ex.startedAtWall = Date.now() - ex.elapsed;
   activeEx[subj] = id;
   startRafLoop();
   saveSubject(subj);
@@ -1713,8 +1071,10 @@ function startEx(subj, id) {
 function stopEx(subj, id, silent) {
   var ex = exercises[subj].find(function(e) { return e.id === id; });
   if (!ex || !ex.running) return;
-  ex.running   = false;
-  ex.startedAt = null;
+  // Compute final elapsed before stopping
+  ex.elapsed = Date.now() - ex.startedAtWall;
+  ex.running = false;
+  ex.startedAtWall = null;
   activeEx[subj] = null;
   if (!silent) {
     ex.stops.push({
@@ -1723,6 +1083,8 @@ function stopEx(subj, id, silent) {
     });
     saveSubject(subj);
     updateChips(subj);
+  } else {
+    saveSubject(subj);
   }
   updateCardState(subj, id);
 }
@@ -1731,7 +1093,8 @@ function resetEx(subj, id) {
   var ex = exercises[subj].find(function(e) { return e.id === id; });
   if (!ex) return;
   if (ex.running) { ex.running = false; activeEx[subj] = null; }
-  ex.elapsed = 0; ex.startedAt = null;
+  ex.elapsed = 0;
+  ex.startedAtWall = null;
   updateCardTimer(subj, id);
   updateCardState(subj, id);
   saveSubject(subj);
@@ -1747,15 +1110,6 @@ function toggleLog(subj, id) {
   if (logEl) logEl.classList.toggle('open', ex.logOpen);
   if (btnEl) btnEl.classList.toggle('open', ex.logOpen);
   renderLogRows(subj, id);
-}
-
-function scheduleResume(subj, ex) {
-  requestAnimationFrame(function() {
-    activeEx[subj] = ex.id;
-    ex.running = true;
-    ex.interval = null;
-    updateCardState(subj, ex.id);
-  });
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -1923,10 +1277,14 @@ function renderList(subj) {
 // ════════════════════════════════════════════════════════════════════
 
 function exportData() {
-  var payload = { version: 1, exportedAt: new Date().toISOString(), data: {} };
+  var payload = { version: 2, exportedAt: new Date().toISOString(), data: {} };
   ['math','svt','pc'].forEach(function(subj) {
     payload.data[subj] = exercises[subj].map(function(e) {
-      return { id: e.id, label: e.label, elapsed: e.elapsed, stops: e.stops };
+      return {
+        id: e.id, label: e.label,
+        elapsed: e.running ? (Date.now() - e.startedAtWall) : e.elapsed,
+        stops: e.stops, photos: e.photos || {}
+      };
     });
   });
   var blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
@@ -1981,51 +1339,6 @@ function showToast(msg, type) {
 }
 
 // ════════════════════════════════════════════════════════════════════
-// VISIBILITY / ONLINE RESYNC
-// ════════════════════════════════════════════════════════════════════
-
-function resyncRunningTimers() {
-  ['math','svt','pc'].forEach(function(subj) {
-    exercises[subj].forEach(function(ex) {
-      if (!ex.running || !ex.startedAt) return;
-      ex.elapsed = Date.now() - ex.startedAt;
-      updateCardTimer(subj, ex.id);
-      updateChips(subj);
-    });
-  });
-  startRafLoop();
-}
-
-document.addEventListener('visibilitychange', function() {
-  if (document.visibilityState !== 'visible') return;
-  resyncRunningTimers();
-  if (_currentUser && _accessToken) {
-    ['math','svt','pc'].forEach(function(s) {
-      if (!_pollers[s]) _startPoller(s);
-    });
-  }
-});
-
-window.addEventListener('online', function() {
-  resyncRunningTimers();
-  if (_offlineTimer) { clearTimeout(_offlineTimer); _offlineTimer = null; }
-  _isActuallyOffline = false;
-  if (_currentUser) {
-    _getAccessToken(function() {
-      ['math','svt','pc'].forEach(function(s) { _startPoller(s); });
-    });
-  }
-});
-
-window.addEventListener('offline', function() {
-  if (_offlineTimer) clearTimeout(_offlineTimer);
-  _offlineTimer = setTimeout(function() {
-    _isActuallyOffline = true;
-    setSyncStatus('error', 'Hors ligne');
-  }, 4000);
-});
-
-// ════════════════════════════════════════════════════════════════════
 // PHOTO FUNCTIONS
 // ════════════════════════════════════════════════════════════════════
 
@@ -2041,8 +1354,7 @@ function addPhotoToStop(subj, id, stopIdx) {
     saveSubject(subj);
     renderLogRows(subj, id);
   };
-  input.value = '';
-  input.click();
+  input.value = ''; input.click();
 }
 
 function addPhotoFreestanding(subj, id) {
@@ -2050,39 +1362,40 @@ function addPhotoFreestanding(subj, id) {
   _photoCallback = function(dataURL) {
     var ex = exercises[subj].find(function(e) { return e.id === id; });
     if (!ex) return;
-    ex.stops.push({ duration: ex.elapsed, at: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }), photo: true });
+    ex.stops.push({
+      duration: ex.elapsed,
+      at: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+      photo: true
+    });
     var newIdx = ex.stops.length - 1;
     ex.photos[newIdx] = [dataURL];
     saveSubject(subj);
     renderList(subj);
     if (ex.logOpen) renderLogRows(subj, id);
   };
-  input.value = '';
-  input.click();
+  input.value = ''; input.click();
 }
 
-function _bindPhotoInput() {
-  document.getElementById('photo-file-input').addEventListener('change', function(e) {
-    var file = e.target.files[0];
-    if (!file || !_photoCallback) return;
-    var reader = new FileReader();
-    reader.onload = function(ev) {
-      var img = new Image();
-      img.onload = function() {
-        var MAX = 800;
-        var scale = img.width > MAX ? MAX / img.width : 1;
-        var canvas = document.createElement('canvas');
-        canvas.width  = Math.round(img.width  * scale);
-        canvas.height = Math.round(img.height * scale);
-        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-        _photoCallback(canvas.toDataURL('image/jpeg', 0.82));
-        _photoCallback = null;
-      };
-      img.src = ev.target.result;
+document.getElementById('photo-file-input').addEventListener('change', function(e) {
+  var file = e.target.files[0];
+  if (!file || !_photoCallback) return;
+  var reader = new FileReader();
+  reader.onload = function(ev) {
+    var img = new Image();
+    img.onload = function() {
+      var MAX = 800;
+      var scale = img.width > MAX ? MAX / img.width : 1;
+      var canvas = document.createElement('canvas');
+      canvas.width  = Math.round(img.width  * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      _photoCallback(canvas.toDataURL('image/jpeg', 0.82));
+      _photoCallback = null;
     };
-    reader.readAsDataURL(file);
-  });
-}
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+});
 
 function deletePhoto(subj, id, stopIdx, photoIdx) {
   var ex = exercises[subj].find(function(e) { return e.id === id; });
@@ -2101,15 +1414,20 @@ function closeLightbox() {
   document.getElementById('photo-lightbox').classList.remove('open');
   document.getElementById('photo-lightbox-img').src = '';
 }
-function _bindLightbox() {
-  document.getElementById('photo-lightbox').addEventListener('click', function(e) {
-    if (e.target === this) closeLightbox();
-  });
-}
+document.getElementById('photo-lightbox').addEventListener('click', function(e) {
+  if (e.target === this) closeLightbox();
+});
 
-// Bind photo input and lightbox immediately — don't wait for login
-_bindPhotoInput();
-_bindLightbox();
+// ════════════════════════════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════════════════════════════
+
+window.addEventListener('DOMContentLoaded', function() {
+  ['math','svt','pc'].forEach(loadSubject);
+  updateAllChips();
+  startRafLoop();
+  startAutoSave();
+});
 </script>
 </body>
 </html>
